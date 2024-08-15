@@ -1,6 +1,7 @@
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
+const mysql = require('mysql');
 
 const app = express();
 const server = http.createServer(app);
@@ -8,6 +9,52 @@ const wss = new WebSocket.Server({ server });
 
 // 使用 Map 存储船只数据，MMSI 作为键
 const allShips = new Map();
+
+// 配置 MySQL 连接
+const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '123456',
+    database: 'map'
+});
+
+db.connect(err => {
+    if (err) {
+        console.error('Error connecting to MySQL:', err.stack);
+        return;
+    }
+    console.log('Connected to MySQL as id ' + db.threadId);
+
+    // 创建 ship 表，如果不存在
+    const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS ship (
+            MMSI BIGINT PRIMARY KEY,
+            Latitude DOUBLE,
+            Longitude DOUBLE,
+            Cog DOUBLE,
+            CommunicationState INT,
+            NavigationalStatus INT,
+            PositionAccuracy BOOLEAN,
+            Raim BOOLEAN,
+            RateOfTurn DOUBLE,
+            Sog DOUBLE,
+            Timestamp INT,
+            TrueHeading INT,
+            ShipName VARCHAR(255),
+            time_utc DATETIME
+        )
+    `;
+    db.query(createTableQuery, (err, result) => {
+        if (err) {
+            console.error('Error creating ship table:', err.stack);
+        } else {
+            console.log('Ship table is ready.');
+        }
+    });
+});
+
+// 创建一个缓存数组用于存储待插入的船只数据
+const shipDataBuffer = [];
 
 // 连接到 aisstream.io WebSocket
 const aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
@@ -30,6 +77,63 @@ aisSocket.on('message', function incoming(data) {
 
     // 更新或添加船只数据
     allShips.set(mmsi, aisMessage);
+
+    const { PositionReport } = aisMessage.Message;
+    const { MetaData } = aisMessage;
+    const timeUtc = new Date(MetaData.time_utc).toISOString().slice(0, 19).replace('T', ' ');
+
+    // 将数据推入缓存数组
+    shipDataBuffer.push([
+        mmsi,
+        MetaData.latitude,
+        MetaData.longitude,
+        PositionReport.Cog,
+        PositionReport.CommunicationState,
+        PositionReport.NavigationalStatus,
+        PositionReport.PositionAccuracy,
+        PositionReport.Raim,
+        PositionReport.RateOfTurn,
+        PositionReport.Sog,
+        PositionReport.Timestamp,
+        PositionReport.TrueHeading,
+        MetaData.ShipName,
+        timeUtc
+    ]);
+
+    // 如果缓存数组达到批量大小，则立即插入数据库
+    if (shipDataBuffer.length >= 1000) {
+        console.log("Buffer full, performing batch insert.");
+
+        const insertQuery = `
+            INSERT INTO ship (MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc)
+            VALUES ?
+            ON DUPLICATE KEY UPDATE
+            Latitude = VALUES(Latitude),
+            Longitude = VALUES(Longitude),
+            Cog = VALUES(Cog),
+            CommunicationState = VALUES(CommunicationState),
+            NavigationalStatus = VALUES(NavigationalStatus),
+            PositionAccuracy = VALUES(PositionAccuracy),
+            Raim = VALUES(Raim),
+            RateOfTurn = VALUES(RateOfTurn),
+            Sog = VALUES(Sog),
+            Timestamp = VALUES(Timestamp),
+            TrueHeading = VALUES(TrueHeading),
+            ShipName = VALUES(ShipName),
+            time_utc = VALUES(time_utc)
+        `;
+
+        db.query(insertQuery, [shipDataBuffer], (err, result) => {
+            if (err) {
+                console.error('Error in batch insert:', err.stack);
+            } else {
+                console.log(`Batch insert successful, inserted/updated ${result.affectedRows} rows.`);
+            }
+        });
+
+        // 清空缓存数组
+        shipDataBuffer.length = 0;
+    }
 
     // 遍历所有连接的客户端，筛选符合客户端范围的船只数据并发送
     wss.clients.forEach(function each(client) {
@@ -64,9 +168,8 @@ wss.on('connection', function connection(ws) {
     
     ws.on('message', function incoming(message) {
         const bounds = JSON.parse(message);
-        ws.bounds = bounds; // 将前端的范围数据存储在 WebSocket 客户端对象中
-        console.log("area update")
-        // 筛选并发送当前范围内的船只数据
+        ws.bounds = bounds;
+
         const shipsInBounds = filterShipsByBounds(Array.from(allShips.values()), bounds);
         ws.send(JSON.stringify(shipsInBounds));
     });
