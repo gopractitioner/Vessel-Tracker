@@ -2,5 +2,6 @@
 # Configuration
 ```sh
 npm install express ws
+npm install mysql
 node server.js
 ```
