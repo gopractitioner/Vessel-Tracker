@@ -134,14 +134,6 @@ aisSocket.on('message', function incoming(data) {
         // 清空缓存数组
         shipDataBuffer.length = 0;
     }
-
-    // 遍历所有连接的客户端，筛选符合客户端范围的船只数据并发送
-    wss.clients.forEach(function each(client) {
-        if (client.readyState === WebSocket.OPEN && client.bounds) {
-            const shipsInBounds = filterShipsByBounds(Array.from(allShips.values()), client.bounds);
-            client.send(JSON.stringify(shipsInBounds));
-        }
-    });
 });
 
 // 过滤船只数据，只返回在指定范围内的船只
@@ -170,14 +162,38 @@ wss.on('connection', function connection(ws) {
         const bounds = JSON.parse(message);
         ws.bounds = bounds;
 
-        const shipsInBounds = filterShipsByBounds(Array.from(allShips.values()), bounds);
-        ws.send(JSON.stringify(shipsInBounds));
+        // 构建查询语句，限制查询结果为 200 条
+        const query = `
+            SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
+                   PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
+            FROM ship
+            WHERE Longitude BETWEEN ? AND ? AND Latitude BETWEEN ? AND ?
+            ORDER BY time_utc DESC
+            LIMIT 50
+        `;
+
+        // 执行查询
+        db.query(query, [bounds.west, bounds.east, bounds.south, bounds.north], (err, results) => {
+            if (err) {
+                console.error('Error querying ships from database:', err.stack);
+                ws.send(JSON.stringify({ error: 'Database query failed' }));
+                return;
+            }
+
+            // 向前端发送查询结果
+            ws.send(JSON.stringify(results));
+        });
     });
 
     ws.on('close', function() {
         console.log('Browser disconnected');
     });
 });
+
+// 在拖动地图时停止向客户端发送数据
+function stopSendingData(ws) {
+    ws.sendingData = false;
+}
 
 // 启动服务器
 const PORT = process.env.PORT || 3000;

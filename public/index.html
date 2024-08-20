@@ -39,13 +39,16 @@
 
         // 当地图视图发生变化时，发送新的地图范围
         map.on('moveend', sendMapBounds);
+        // 当地图视图发生变化时，延迟 200 毫秒发送新的地图范围
+        //map.on('moveend', _.debounce(sendMapBounds, 200));
 
         socket.onmessage = function(event) {
             const ships = JSON.parse(event.data);
+            const mapBounds = map.getBounds(); // 获取当前地图视图范围
             ships.forEach(aisMessage => {
-                const mmsi = aisMessage.MetaData.MMSI;
-                const latitude = aisMessage.MetaData.latitude;
-                const longitude = aisMessage.MetaData.longitude;
+                const mmsi = aisMessage.MMSI;
+                const latitude = aisMessage.Latitude;
+                const longitude = aisMessage.Longitude;
 
                 // 检查该 MMSI 是否已有标记
                 if (markers[mmsi]) {
@@ -60,6 +63,24 @@
                     markers[mmsi] = marker;
                 }
             });
+            // 输出当前地图上的标记总数
+            console.log('Total number of markers:', Object.keys(markers).length);
+
+            // 当标记总数超过500时，清除屏幕外的标记点
+            if (Object.keys(markers).length > 200) {
+                Object.keys(markers).forEach(mmsi => {
+                    const marker = markers[mmsi];
+                    const markerLngLat = marker.getLngLat();
+
+                    // 检查标记点是否在当前视图范围内
+                    if (!mapBounds.contains(markerLngLat)) {
+                        // 如果标记点不在范围内，移除它并从 markers 对象中删除
+                        marker.remove();
+                        delete markers[mmsi];
+                    }
+                });
+                console.log('Markers outside the view have been removed.');
+            }
         };
 
         socket.onerror = function(error) {
@@ -68,6 +89,7 @@
 
         // 将当前地图的边界范围发送到后端
         function sendMapBounds() {
+            console.log('map area update')
             if (socket.readyState === WebSocket.OPEN) {
                 const bounds = map.getBounds();
                 const boundsData = {
