@@ -53,6 +53,38 @@ db.connect(err => {
     });
 });
 
+// 添加 /search 路由，用于根据 MMSI 搜索船只
+app.get('/search', (req, res) => {
+    const mmsi = req.query.mmsi;
+
+    if (!mmsi) {
+        return res.status(400).send({ error: 'MMSI is required' });
+    }
+
+    const query = `
+        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
+               PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
+        FROM ship
+        WHERE MMSI = ?
+        LIMIT 1
+    `;
+
+    db.query(query, [mmsi], (err, results) => {
+        if (err) {
+            console.error('Error searching ship from database:', err.stack);
+            return res.status(500).send({ error: 'Database query failed' });
+        }
+
+        if (results.length > 0) {
+            res.send(results[0]);
+        } else {
+            res.status(404).send({ error: 'Ship not found' });
+        }
+    });
+});
+
+
+
 // 创建一个缓存数组用于存储待插入的船只数据
 const shipDataBuffer = [];
 

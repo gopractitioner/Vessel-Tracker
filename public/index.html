@@ -1,20 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Mapbox GL JS Example</title>
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
     <style>
-        body { margin: 0; padding: 0; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        #data { position: absolute; bottom: 10px; left: 10px; background: rgba(255, 255, 255, 0.8); padding: 10px; max-height: 200px; overflow-y: scroll; width: 300px; }
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #data {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: scroll;
+            width: 300px;
+        }
     </style>
 </head>
+
 <body>
+    <!-- search box -->
+    <input type="text" id="mmsiSearch" placeholder="Enter MMSI"
+        style="position:absolute; top:10px; left:10px; z-index:1; padding:5px;">
+    <!-- search button -->
+    <button id="searchBtn" style="position:absolute; top:10px; left:150px; z-index:1; padding:5px;">Search</button>
+
+
     <div id="map"></div>
     <div id="data"></div>
-    
+
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
     <script>
         // 设置 Mapbox 的访问令牌
@@ -42,7 +70,7 @@
         // 当地图视图发生变化时，延迟 200 毫秒发送新的地图范围
         //map.on('moveend', _.debounce(sendMapBounds, 200));
 
-        socket.onmessage = function(event) {
+        socket.onmessage = function (event) {
             const ships = JSON.parse(event.data);
             const mapBounds = map.getBounds(); // 获取当前地图视图范围
             ships.forEach(aisMessage => {
@@ -59,7 +87,7 @@
                     const marker = new mapboxgl.Marker()
                         .setLngLat([longitude, latitude])
                         .addTo(map);
-                    
+
                     markers[mmsi] = marker;
                 }
             });
@@ -83,7 +111,7 @@
             }
         };
 
-        socket.onerror = function(error) {
+        socket.onerror = function (error) {
             console.error('WebSocket error:', error);
         };
 
@@ -101,6 +129,47 @@
                 socket.send(JSON.stringify(boundsData));
             }
         }
+
+
+        document.getElementById('searchBtn').addEventListener('click', function () {
+            const mmsi = document.getElementById('mmsiSearch').value;
+            if (mmsi) {
+                searchShipByMMSI(mmsi);
+            }
+        });
+
+        function searchShipByMMSI(mmsi) {
+            // 发送请求到服务器，查找特定 MMSI 的船只信息
+            fetch(`/search?mmsi=${mmsi}`)
+                .then(response => response.json())
+                .then(ship => {
+                    if (ship) {
+                        // 如果找到该船只，检查是否已存在于地图上
+                        if (markers[mmsi]) {
+                            // 如果存在，则更新该标记为红色
+                            markers[mmsi].getElement().style.backgroundColor = 'red';
+                        } else {
+                            // 如果不存在，则创建一个新的红色标记
+                            const marker = new mapboxgl.Marker({ color: 'red' })
+                                .setLngLat([ship.Longitude, ship.Latitude])
+                                .addTo(map);
+
+                            markers[mmsi] = marker;
+                        }
+
+                        // 将地图中心移动到该船只位置
+                        map.flyTo({ center: [ship.Longitude, ship.Latitude], zoom: 12 });
+                    } else {
+                        alert('Ship not found.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching for ship:', error);
+                    alert('Error occurred while searching for the ship.');
+                });
+        }
+
     </script>
 </body>
+
 </html>
