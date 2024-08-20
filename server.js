@@ -83,7 +83,35 @@ app.get('/search', (req, res) => {
     });
 });
 
+// 按照 ShipName 搜索船只的路由
+app.get('/searchByName', (req, res) => {
+    const shipName = req.query.shipName;
 
+    if (!shipName) {
+        return res.status(400).send({ error: 'ShipName is required' });
+    }
+
+    const query = `
+        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
+               PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
+        FROM ship
+        WHERE ShipName LIKE ?
+        LIMIT 10
+    `;
+
+    db.query(query, [`%${shipName}%`], (err, results) => {
+        if (err) {
+            console.error('Error searching ship from database:', err.stack);
+            return res.status(500).send({ error: 'Database query failed' });
+        }
+
+        if (results.length > 0) {
+            res.send(results);
+        } else {
+            res.status(404).send({ error: 'No ships found' });
+        }
+    });
+});
 
 // 创建一个缓存数组用于存储待插入的船只数据
 const shipDataBuffer = [];
