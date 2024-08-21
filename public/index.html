@@ -29,15 +29,19 @@
             overflow-y: scroll;
             width: 300px;
         }
+
+        .mapboxgl-popup {
+            z-index: 1000;
+        }
     </style>
 </head>
 
 <body>
     <!-- search box -->
-    <input type="text" id="mmsiSearch" placeholder="Enter MMSI"
-        style="position:absolute; top:10px; left:10px; z-index:1; padding:5px;">
+    <input type="text" id="mmsiSearch" placeholder="Enter MMSI or ShipName"
+        style="position:absolute; top:10px; left:10px; z-index:1; padding:5px; width:150px;">
     <!-- search button -->
-    <button id="searchBtn" style="position:absolute; top:10px; left:150px; z-index:1; padding:5px;">Search</button>
+    <button id="searchBtn" style="position:absolute; top:10px; left:170px; z-index:1; padding:5px;">Search</button>
 
 
     <div id="map"></div>
@@ -58,6 +62,18 @@
 
         // 存储所有标记的对象，以 MMSI 作为键
         const markers = {};
+        // let currentPopup = null;
+        // // 地图加载完成后，发送初始范围
+        // map.on('load', function () {
+        //     sendMapBounds();
+
+        //     // 测试代码：在地图上固定位置添加一个 Popup
+        //     new mapboxgl.Popup()
+        //         .setLngLat([175.318526, -37.788266]) // 新西兰某个位置
+        //         .setHTML('<strong>Test Popup</strong>')
+        //         .addTo(map);
+        // });
+
 
         // 连接到 WebSocket 服务器
         const socket = new WebSocket(`ws://${window.location.host}`);
@@ -73,10 +89,13 @@
         socket.onmessage = function (event) {
             const ships = JSON.parse(event.data);
             const mapBounds = map.getBounds(); // 获取当前地图视图范围
+
             ships.forEach(aisMessage => {
                 const mmsi = aisMessage.MMSI;
                 const latitude = aisMessage.Latitude;
                 const longitude = aisMessage.Longitude;
+                const shipName = aisMessage.ShipName || 'Unknown';
+                const navigationalStatus = aisMessage.NavigationalStatus || 'Unknown';
 
                 // 检查该 MMSI 是否已有标记
                 if (markers[mmsi]) {
@@ -86,11 +105,49 @@
                     // 创建新的标记并存储在 markers 对象中
                     const marker = new mapboxgl.Marker()
                         .setLngLat([longitude, latitude])
+                        .setPopup(new mapboxgl.Popup().setHTML(`
+                            <strong>MMSI:</strong> ${mmsi}<br>
+                            <strong>Ship Name:</strong> ${shipName}<br>
+                            <strong>Navigational Status:</strong> ${navigationalStatus}
+                        `)) // 直接与 Popup 绑定
                         .addTo(map);
 
                     markers[mmsi] = marker;
+
+                    marker.getElement().addEventListener('click', () => {
+                        console.log('click on marker...');
+                        marker.togglePopup(); // 自动切换 Popup 的显示和隐藏
+                    });
+
+                    marker.getElement().addEventListener('click', () => {
+                        console.log('click on marker...');
+
+                        // 如果已有弹出框，先移除它
+                        if (currentPopup) {
+                            currentPopup.remove();
+                        }
+
+                        // 创建并展示新的弹出框
+                        currentPopup = new mapboxgl.Popup()
+                            .setLngLat([longitude, latitude])
+                            .setHTML(`
+                                <strong>MMSI:</strong> ${mmsi}<br>
+                                <strong>Ship Name:</strong> ${shipName}<br>
+                                <strong>Navigational Status:</strong> ${navigationalStatus}
+                            `)
+                            .addTo(map);
+                        // 检查经纬度是否有效
+                        if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+                            console.error('Invalid longitude or latitude:', longitude, latitude);
+                        }
+                        console.log('Popup created with content:', currentPopup.getLngLat(), currentPopup._content.innerHTML);
+
+                    });
+
                 }
             });
+
+
             // 输出当前地图上的标记总数
             console.log('Total number of markers:', Object.keys(markers).length);
 
