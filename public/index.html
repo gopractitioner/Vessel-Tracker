@@ -33,6 +33,14 @@
         .mapboxgl-popup {
             z-index: 1000;
         }
+
+        .custom-marker {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
     </style>
 </head>
 
@@ -189,10 +197,28 @@
 
 
         document.getElementById('searchBtn').addEventListener('click', function () {
-            const mmsi = document.getElementById('mmsiSearch').value;
-            if (mmsi) {
+
+            //const mmsi = document.getElementById('mmsiSearch').value;
+            const searchInput = document.getElementById('mmsiSearch').value;
+            // check if input is mmsi or shipname
+            let mmsi = null;
+            let shipName = null;
+            if (!isNaN(searchInput)) {
+                mmsi = searchInput;
                 searchShipByMMSI(mmsi);
+            } else {
+                shipName = searchInput;
+                searchShipByName(shipName);
             }
+
+            // if (mmsi) {
+            //     searchShipByMMSI(mmsi);
+            // }
+
+            // if (shipName) {
+            //     searchShipByName(shipName);
+            // }
+
         });
 
         function searchShipByMMSI(mmsi) {
@@ -200,19 +226,34 @@
             fetch(`/search?mmsi=${mmsi}`)
                 .then(response => response.json())
                 .then(ship => {
+                    // if (ship) {
+                    //     // 如果找到该船只，检查是否已存在于地图上
+                    //     if (markers[mmsi]) {
+                    //         // 如果存在，则更新该标记为红色
+                    //         markers[mmsi].getElement().style.backgroundColor = 'red';
+                    //     } else {
+                    //         // 如果不存在，则创建一个新的红色标记
+                    //         const marker = new mapboxgl.Marker({ color: 'red' })
+                    //             .setLngLat([ship.Longitude, ship.Latitude])
+                    //             .addTo(map);
+
+                    //         markers[mmsi] = marker;
+                    //     }
+
+                    //     // 将地图中心移动到该船只位置
+                    //     map.flyTo({ center: [ship.Longitude, ship.Latitude], zoom: 12 });
+                    // } else {
+                    //     alert('Ship not found.');
+                    // }
                     if (ship) {
                         // 如果找到该船只，检查是否已存在于地图上
                         if (markers[mmsi]) {
-                            // 如果存在，则更新该标记为红色
-                            markers[mmsi].getElement().style.backgroundColor = 'red';
-                        } else {
-                            // 如果不存在，则创建一个新的红色标记
-                            const marker = new mapboxgl.Marker({ color: 'red' })
-                                .setLngLat([ship.Longitude, ship.Latitude])
-                                .addTo(map);
-
-                            markers[mmsi] = marker;
+                            // 移除现有的标记
+                            markers[mmsi].remove();
+                            delete markers[mmsi];
                         }
+                        // 创建新的红色标记
+                        createCustomMarker(mmsi, ship.Longitude, ship.Latitude, ship.ShipName, ship.NavigationalStatus);
 
                         // 将地图中心移动到该船只位置
                         map.flyTo({ center: [ship.Longitude, ship.Latitude], zoom: 12 });
@@ -224,7 +265,100 @@
                     console.error('Error searching for ship:', error);
                     alert('Error occurred while searching for the ship.');
                 });
+
         }
+
+
+        // document.getElementById('searchByNameBtn').addEventListener('click', function () {
+        //     const shipName = document.getElementById('shipNameSearch').value;
+        //     if (shipName) {
+        //         searchShipByName(shipName);
+        //     }
+        // });
+
+        function searchShipByName(shipName) {
+            // 发送请求到服务器，查找特定船名的船只信息
+            fetch(`/searchByName?shipName=${shipName}`)
+                .then(response => response.json())
+                .then(ships => {
+                    if (ships.length > 0) {
+                        // 清除之前的搜索结果标记（如果需要）
+                        Object.keys(markers).forEach(mmsi => {
+                            markers[mmsi].remove();
+                            delete markers[mmsi];
+                        });
+
+                        // ships.forEach(ship => {
+                        //     const mmsi = ship.MMSI;
+                        //     const longitude = ship.Longitude;
+                        //     const latitude = ship.Latitude;
+
+                        //     // 为每个搜索结果创建一个标记
+                        //     const marker = new mapboxgl.Marker({ color: 'red' })
+                        //         .setLngLat([longitude, latitude])
+                        //         .setPopup(new mapboxgl.Popup().setHTML(`
+                        //             <strong>MMSI:</strong> ${mmsi}<br>
+                        //             <strong>Ship Name:</strong> ${ship.ShipName}<br>
+                        //             <strong>Navigational Status:</strong> ${ship.NavigationalStatus}
+                        //         `)) // 直接与 Popup 绑定
+                        //         .addTo(map);
+
+                        //     markers[mmsi] = marker;
+
+                        //     // 监听点击事件显示Popup
+                        //     marker.getElement().addEventListener('click', () => {
+                        //         marker.togglePopup(); // 自动切换 Popup 的显示和隐藏
+                        //     });
+
+                        //     //map.flyTo({ center: [longitude, latitude], zoom: 12 });
+                        // });
+
+
+
+                        ships.forEach(ship => {
+                            createCustomMarker(ship.MMSI, ship.Longitude, ship.Latitude, ship.ShipName, ship.NavigationalStatus);
+                        });
+
+                    } else {
+                        alert('No ships found with the provided name.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching for ships by name:', error);
+                    alert('Error occurred while searching for the ships.');
+                });
+        }
+        // 自定义标记
+        function createCustomMarker(mmsi, longitude, latitude, shipName, navigationalStatus) {
+            // 创建自定义的标记元素
+            const el = document.createElement('div');
+            el.className = 'custom-marker';
+            el.style.backgroundColor = 'red'; // 设置整个图标为红色
+            el.style.width = '20px'; // 设置图标的宽度
+            el.style.height = '20px'; // 设置图标的高度
+            el.style.borderRadius = '50%'; // 将图标设置为圆形
+
+            // 创建新的标记并存储在 markers 对象中
+            const marker = new mapboxgl.Marker(el)
+                .setLngLat([longitude, latitude])
+                .setPopup(new mapboxgl.Popup().setHTML(`
+                    <strong>MMSI:</strong> ${mmsi}<br>
+                    <strong>Ship Name:</strong> ${shipName}<br>
+                    <strong>Navigational Status:</strong> ${navigationalStatus}
+                `)) // 直接与 Popup 绑定
+                .addTo(map);
+
+            markers[mmsi] = marker;
+
+            // 添加点击事件，显示 Popup
+            marker.getElement().addEventListener('click', () => {
+                marker.togglePopup(); // 自动切换 Popup 的显示和隐藏
+            });
+
+            return marker;
+        }
+
+
 
     </script>
 </body>
