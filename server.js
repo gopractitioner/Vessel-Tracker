@@ -53,7 +53,7 @@ db.connect(err => {
     });
 });
 
-// 添加 /search 路由，用于根据 MMSI 搜索船只
+// 根据 MMSI 搜索船只
 app.get('/search', (req, res) => {
     const mmsi = req.query.mmsi;
 
@@ -83,7 +83,7 @@ app.get('/search', (req, res) => {
     });
 });
 
-// 按照 ShipName 搜索船只的路由
+// 按照 ShipName 搜索船只
 app.get('/searchByName', (req, res) => {
     const shipName = req.query.shipName;
 

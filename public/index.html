@@ -70,18 +70,6 @@
 
         // 存储所有标记的对象，以 MMSI 作为键
         const markers = {};
-        // let currentPopup = null;
-        // // 地图加载完成后，发送初始范围
-        // map.on('load', function () {
-        //     sendMapBounds();
-
-        //     // 测试代码：在地图上固定位置添加一个 Popup
-        //     new mapboxgl.Popup()
-        //         .setLngLat([175.318526, -37.788266]) // 新西兰某个位置
-        //         .setHTML('<strong>Test Popup</strong>')
-        //         .addTo(map);
-        // });
-
 
         // 连接到 WebSocket 服务器
         const socket = new WebSocket(`ws://${window.location.host}`);
@@ -197,8 +185,6 @@
 
 
         document.getElementById('searchBtn').addEventListener('click', function () {
-
-            //const mmsi = document.getElementById('mmsiSearch').value;
             const searchInput = document.getElementById('mmsiSearch').value;
             // check if input is mmsi or shipname
             let mmsi = null;
@@ -211,14 +197,6 @@
                 searchShipByName(shipName);
             }
 
-            // if (mmsi) {
-            //     searchShipByMMSI(mmsi);
-            // }
-
-            // if (shipName) {
-            //     searchShipByName(shipName);
-            // }
-
         });
 
         function searchShipByMMSI(mmsi) {
@@ -226,25 +204,6 @@
             fetch(`/search?mmsi=${mmsi}`)
                 .then(response => response.json())
                 .then(ship => {
-                    // if (ship) {
-                    //     // 如果找到该船只，检查是否已存在于地图上
-                    //     if (markers[mmsi]) {
-                    //         // 如果存在，则更新该标记为红色
-                    //         markers[mmsi].getElement().style.backgroundColor = 'red';
-                    //     } else {
-                    //         // 如果不存在，则创建一个新的红色标记
-                    //         const marker = new mapboxgl.Marker({ color: 'red' })
-                    //             .setLngLat([ship.Longitude, ship.Latitude])
-                    //             .addTo(map);
-
-                    //         markers[mmsi] = marker;
-                    //     }
-
-                    //     // 将地图中心移动到该船只位置
-                    //     map.flyTo({ center: [ship.Longitude, ship.Latitude], zoom: 12 });
-                    // } else {
-                    //     alert('Ship not found.');
-                    // }
                     if (ship) {
                         // 如果找到该船只，检查是否已存在于地图上
                         if (markers[mmsi]) {
@@ -269,13 +228,6 @@
         }
 
 
-        // document.getElementById('searchByNameBtn').addEventListener('click', function () {
-        //     const shipName = document.getElementById('shipNameSearch').value;
-        //     if (shipName) {
-        //         searchShipByName(shipName);
-        //     }
-        // });
-
         function searchShipByName(shipName) {
             // 发送请求到服务器，查找特定船名的船只信息
             fetch(`/searchByName?shipName=${shipName}`)
@@ -287,33 +239,6 @@
                             markers[mmsi].remove();
                             delete markers[mmsi];
                         });
-
-                        // ships.forEach(ship => {
-                        //     const mmsi = ship.MMSI;
-                        //     const longitude = ship.Longitude;
-                        //     const latitude = ship.Latitude;
-
-                        //     // 为每个搜索结果创建一个标记
-                        //     const marker = new mapboxgl.Marker({ color: 'red' })
-                        //         .setLngLat([longitude, latitude])
-                        //         .setPopup(new mapboxgl.Popup().setHTML(`
-                        //             <strong>MMSI:</strong> ${mmsi}<br>
-                        //             <strong>Ship Name:</strong> ${ship.ShipName}<br>
-                        //             <strong>Navigational Status:</strong> ${ship.NavigationalStatus}
-                        //         `)) // 直接与 Popup 绑定
-                        //         .addTo(map);
-
-                        //     markers[mmsi] = marker;
-
-                        //     // 监听点击事件显示Popup
-                        //     marker.getElement().addEventListener('click', () => {
-                        //         marker.togglePopup(); // 自动切换 Popup 的显示和隐藏
-                        //     });
-
-                        //     //map.flyTo({ center: [longitude, latitude], zoom: 12 });
-                        // });
-
-
 
                         ships.forEach(ship => {
                             createCustomMarker(ship.MMSI, ship.Longitude, ship.Latitude, ship.ShipName, ship.NavigationalStatus);
@@ -330,7 +255,6 @@
         }
         // 自定义标记
         function createCustomMarker(mmsi, longitude, latitude, shipName, navigationalStatus) {
-            // 创建自定义的标记元素
             const el = document.createElement('div');
             el.className = 'custom-marker';
             el.style.backgroundColor = 'red'; // 设置整个图标为红色
