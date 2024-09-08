@@ -21,8 +21,8 @@ const wss = new WebSocket.Server({ server });
 const dbClient = new DynamoDBClient({
     region: 'us-east-1', // 你的 DynamoDB 区域
     credentials: {
-        accessKeyId: 'AKIATCKARRISEWBOKPF6',
-        secretAccessKey: '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'
+        accessKeyId: 'XXXXXXXXXXX',    //替换
+        secretAccessKey: 'XXXXXXXXXXX'    //替换
     }
 });
 
