@@ -1,11 +1,178 @@
 const express = require('express');
+const AWS = require('aws-sdk');
+const bodyParser = require('body-parser');
+const session = require('express-session');
+const path = require('path');
+
 const WebSocket = require('ws');
 const http = require('http');
-//const mysql = require('mysql');
+// //const mysql = require('mysql');
 const mysql = require('mysql2');// use mysql2 instead of mysql
+
 const app = express();
+
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+
+
+// 配置 AWS Cognito 参数
+const cognito = new AWS.CognitoIdentityServiceProvider({
+    region: 'us-east-1' // 设置为你Cognito User Pool所在的区域
+});
+
+//const app = express();
+app.use(bodyParser.json());
+
+
+// 设置 session 中间件
+app.use(session({
+    secret: 'your-secret-key', // 用于加密 session 的密钥
+    resave: false, // 如果 session 没有变化则不保存
+    saveUninitialized: true, // 对所有请求都设置 session，即使没有初始化
+    cookie: { secure: false } // 开发环境下设置为 false, 生产环境下使用 HTTPS 时应为 true
+}));
+
+const USER_POOL_ID = 'us-east-1_KWQe9X3Pp'; // 替换为你的 User Pool ID
+const CLIENT_ID = '3jgvd3uni2chn30us56m4fleem'; // 替换为你的 Client ID
+
+app.use(express.static('public'));
+
+// 注册新用户
+app.post('/register', (req, res) => {
+    const { email, password, givenName, familyName } = req.body;
+
+    const params = {
+        ClientId: CLIENT_ID,
+        Username: email,
+        Password: password,
+        UserAttributes: [
+            {
+                Name: 'email',
+                Value: email
+            },
+            {
+                Name: 'given_name',
+                Value: givenName
+            },
+            {
+                Name: 'family_name',
+                Value: familyName
+            }
+        ]
+    };
+
+    cognito.signUp(params, (err, data) => {
+        if (err) {
+            console.error('Error registering user:', err);
+            return res.status(400).send(err.message || JSON.stringify(err));
+        }
+        res.json({
+            message: 'User registered successfully!',
+            data: data
+        });
+    });
+});
+
+
+// 确认用户注册（用户需要输入通过电子邮件收到的验证码）
+app.post('/confirm', (req, res) => {
+    const { email, code } = req.body;
+
+    const params = {
+        ClientId: CLIENT_ID,
+        Username: email, // 使用 email 作为用户名
+        ConfirmationCode: code
+    };
+
+    cognito.confirmSignUp(params, (err, data) => {
+        if (err) {
+            console.error('Error confirming user:', err);
+            return res.status(400).send(err.message || JSON.stringify(err));
+        }
+        res.json({
+            message: 'User confirmed successfully!',
+            data: data
+        });
+    });
+});
+
+// 登录
+app.post('/login', (req, res) => {
+    const { email, password } = req.body;
+
+    const params = {
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        ClientId: CLIENT_ID,
+        AuthParameters: {
+            USERNAME: email, // 使用 email 作为用户名
+            PASSWORD: password
+        }
+    };
+
+    cognito.initiateAuth(params, (err, data) => {
+        if (err) {
+            console.error('Error logging in:', err);
+            return res.status(400).send(err.message || JSON.stringify(err));
+        }
+
+        // res.json({
+        //     message: 'Login successful!',
+        //     data: data.AuthenticationResult // 包含访问令牌等信息
+        // });
+
+        req.session.user = {
+            email: email,
+            token: data.AuthenticationResult.AccessToken // 你可以根据需要保存更多信息
+        };
+
+        // 登录成功后重定向到 ship.html
+        //res.redirect('/ship');
+        res.json({ redirectUrl: '/ship' });
+
+    });
+});
+
+
+// 路由处理：重定向到 ship.html
+app.get('/ship', (req, res) => {
+    //console.error('User:&&&&', req);
+    // if (!req.session.user) {
+    //     //console.error('%%%%%%');
+
+    //     return res.status(401).send('Unauthorized: You need to login first.');
+    // }
+    // 返回 ship.html 文件
+    res.sendFile(path.join(__dirname, 'public', 'ship.html'), (err) => {
+        //console.error('Error sending file:*******', err);
+        if (err) {
+            console.error('Error sending file:', err);
+            return res.status(500).send('Internal Server Error');
+        }
+    });
+});
+// // 检查 session 的路由
+app.get('/check-session', (req, res) => {
+    if (req.session.user) {
+        // 如果 session 存在，返回 200 状态码
+        res.status(200).send('Session exists');
+    } else {
+        // 如果没有 session，返回 401 未授权
+        res.status(401).send('No session');
+    }
+});
+
+
+// 启动服务器
+// app.listen(3000, () => {
+//     console.log('Server is running on port 3000');
+// });
+
+
+
+
+
+
 
 // 使用 Map 存储船只数据，MMSI 作为键
 const allShips = new Map();

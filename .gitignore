@@ -1,3 +1,10 @@
 /node_modules
 /package-lock.json
 /package.json
+
+
+# export const awsExports = {
+#     "REGION": "us-east-1",
+#     "USER_POOL_ID": "us-east-1_KWQe9X3Pp",
+#     "USER_POOL_APP_CLIENT_ID": "3jgvd3uni2chn30us56m4fleem"
+# }
