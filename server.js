@@ -9,9 +9,12 @@ const path = require('path');
 const WebSocket = require('ws');
 const http = require('http');
 // //const mysql = require('mysql');
+// //const mysql = require('mysql');
 const mysql = require('mysql2');// use mysql2 instead of mysql
 
+
 const app = express();
+
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
