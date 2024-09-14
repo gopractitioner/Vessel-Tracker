@@ -542,8 +542,8 @@ function stopSendingData(ws) {
 }
 
 // Start the server
-const PORT = process.env.PORT || 3000;
-//const PORT = process.env.PORT || 443;
+//const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 443;
 async function startServer() {
     await initializeDbClients();
 
