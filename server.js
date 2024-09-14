@@ -3,18 +3,35 @@ const AWS = require('aws-sdk');
 const bodyParser = require('body-parser');
 const { DynamoDBClient, PutItemCommand } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
-
 const session = require('express-session');
 const path = require('path');
 const WebSocket = require('ws');
+const https = require('https');
 const http = require('http');
+const fs = require('fs');
 const mysql = require('mysql2');// use mysql2 instead of mysql
 const { getSecret } = require('./secret.js');
 
 const app = express();
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+// Read your SSL certificate and private key
+const privateKey = fs.readFileSync('/path/to/private-key.pem', 'utf8');
+const certificate = fs.readFileSync('/path/to/certificate.pem', 'utf8');
+const ca = fs.readFileSync('/path/to/ca.pem', 'utf8');
+
+const credentials = {
+    key: privateKey,
+    cert: certificate,
+    ca: ca
+};
+
+// Create HTTP server
+const httpServer = http.createServer(app);
+
+// Create HTTPS server
+const httpsServer = https.createServer(credentials, app);
+
+const wss = new WebSocket.Server({ server: httpsServer }); // WebSocket on HTTPS only
 
 let dbClient;
 let docClient;
@@ -33,29 +50,16 @@ async function initializeDbClients() {
         console.log("DynamoDB clients initialized successfully");
     } catch (error) {
         console.error("Failed to initialize DynamoDB clients:", error);
-        process.exit(1); //Exit the program if the client can't be initialised
+        process.exit(1); // Exit the program if the client can't be initialised
     }
 }
-
-
-
-// const dbClient = new DynamoDBClient({
-//     region: 'us-east-1', // Your DynamoDB region
-//     credentials: {
-//         accessKeyId: 'XXXXXXXXXX',    //replace
-//         secretAccessKey: 'XXXXXXXXX'    //replace
-//     }
-// });
-
 
 // Configure AWS Cognito parameters
 const cognito = new AWS.CognitoIdentityServiceProvider({
     region: 'us-east-1' // Set to the region of your Cognito User Pool
 });
 
-//const app = express();
 app.use(bodyParser.json());
-
 
 // Configure session middleware
 app.use(session({
@@ -106,8 +110,7 @@ app.post('/register', (req, res) => {
     });
 });
 
-
-// Confirm user registration (users need to enter a verification code received by email)
+// Confirm user registration
 app.post('/confirm', (req, res) => {
     const { email, code } = req.body;
 
@@ -147,44 +150,31 @@ app.post('/login', (req, res) => {
             console.error('Error logging in:', err);
             return res.status(400).send(err.message || JSON.stringify(err));
         }
-        //console.log("data",data)
+
         req.session.user = {
             email: email,
             token: data.AuthenticationResult.AccessToken // You can save more information based on your needs
         };
 
-        // Redirect to ship.html after successful login
-        //res.redirect('/ship');
         res.json({ redirectUrl: '/ship' });
-
     });
 });
 
-
 // Routing handler: redirect to ship.html
 app.get('/ship', (req, res) => {
-    //console.error('User:&&&&', req);
-    // if (!req.session.user) {
-    //     //console.error('%%%%%%');
-
-    //     return res.status(401).send('Unauthorized: You need to login first.');
-    // }
-    // 返回 ship.html 文件
     res.sendFile(path.join(__dirname, 'public', 'ship.html'), (err) => {
-        //console.error('Error sending file:*******', err);
         if (err) {
             console.error('Error sending file:', err);
             return res.status(500).send('Internal Server Error');
         }
     });
 });
+
 // Route to check session
 app.get('/check-session', (req, res) => {
     if (req.session.user) {
-        // If session exists, return 200 status code
         res.status(200).send('Session exists');
     } else {
-        // If no session, return 401 Unauthorized
         res.status(401).send('No session');
     }
 });
@@ -207,7 +197,6 @@ db.connect(err => {
     }
     console.log('Connected to MySQL as id ' + db.threadId);
 
-    // Create the ship table if it doesn't exist
     const createTableQuery = `
         CREATE TABLE IF NOT EXISTS ship (
             MMSI BIGINT PRIMARY KEY,
@@ -237,9 +226,8 @@ db.connect(err => {
 
 // Search for ships by MMSI
 app.get('/search', (req, res) => {
-    // Verify if the user is logged in
     if (!req.session.user || !req.session.user.email) {
-        return res.status(403).json({ error: 'Unauthorized access' }); // Return 403 error if not logged in
+        return res.status(403).json({ error: 'Unauthorized access' });
     }
 
     const mmsi = req.query.mmsi;
@@ -248,22 +236,18 @@ app.get('/search', (req, res) => {
         return res.status(400).send({ error: 'MMSI is required' });
     }
 
-    // Get current logged-in user's information using req.session.user, such as userId
     const userEmail = req.session.user.email;
-    //console.log("userId",userEmail)
 
-    // Build a DynamoDB data item
     const item = {
-        TableName: "UserSearches", // Your DynamoDB table name
+        TableName: "UserSearches",
         Item: {
             "Email": { S: userEmail },
             "MMSI": { S: mmsi },
-            "SearchTime": { S: new Date().toISOString() } // Store search time
+            "SearchTime": { S: new Date().toISOString() }
         }
     };
 
     try {
-        // Store user search in DynamoDB
         dbClient.send(new PutItemCommand(item));
         console.log("Search stored successfully in DynamoDB.");
     } catch (error) {
@@ -271,16 +255,14 @@ app.get('/search', (req, res) => {
         return res.status(500).send({ error: 'Failed to store search data' });
     }
 
-    // Update the query to add user restrictions, ensuring users can only search for ship information relevant to them
     const query = `
-        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
+        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus,
                PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
         FROM ship
         WHERE MMSI = ?
         LIMIT 1
     `;
 
-    // Pass MMSI and UserId as query parameters
     db.query(query, [mmsi], (err, results) => {
         if (err) {
             console.error('Error searching ship from database:', err.stack);
@@ -295,6 +277,7 @@ app.get('/search', (req, res) => {
     });
 });
 
+// Other routes like /searchByName, /searchHistory, etc., will remain unchanged
 
 // Search for ships by ShipName
 app.get('/searchByName', (req, res) => {
@@ -384,6 +367,14 @@ app.get('/searchHistory', async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+// WebSocket logic also remains unchanged
 
 // Create a buffer array to store pending ship data
 const shipDataBuffer = [];
@@ -527,13 +518,30 @@ function stopSendingData(ws) {
     ws.sendingData = false;
 }
 
-// Start the server
-const PORT = process.env.PORT || 3000;
+
+
+// Redirect HTTP to HTTPS
+app.use((req, res, next) => {
+    if (req.protocol === 'http') {
+        res.redirect(`https://${req.headers.host}${req.url}`);
+    } else {
+        next();
+    }
+});
+
+// Start both HTTP and HTTPS servers
+const HTTP_PORT = 80;
+const HTTPS_PORT = 443;
+
 async function startServer() {
     await initializeDbClients();
 
-    server.listen(PORT, () => {
-        console.log(`Server is listening on port ${PORT}`);
+    httpServer.listen(HTTP_PORT, () => {
+        console.log(`HTTP server is listening on port ${HTTP_PORT}`);
+    });
+
+    httpsServer.listen(HTTPS_PORT, () => {
+        console.log(`HTTPS server is listening on port ${HTTPS_PORT}`);
     });
 }
 
@@ -541,7 +549,3 @@ startServer().catch(error => {
     console.error("Failed to start server:", error);
     process.exit(1);
 });
-// const PORT = process.env.PORT || 3000;
-// server.listen(PORT, () => {
-//     console.log(`Server is listening on port ${PORT}`);
-// });
