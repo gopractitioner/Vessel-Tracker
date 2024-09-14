@@ -8,25 +8,13 @@ const session = require('express-session');
 const path = require('path');
 const WebSocket = require('ws');
 const http = require('http');
-const https = require('https');
-const fs = require('fs');
 const mysql = require('mysql2');// use mysql2 instead of mysql
 const { getSecret } = require('./secret.js');
 
 const app = express();
 
-// HTTPS options (Replace these paths with your actual certificate paths)
-const options = {
-    key: fs.readFileSync('/home/ec2-user/Vessel-Tracker/private.key'),
-    cert: fs.readFileSync('/home/ec2-user/Vessel-Tracker/certificate.crt')
-};
-
-// Create both HTTP and HTTPS servers
-const httpServer = http.createServer(app);
-const httpsServer = https.createServer(options, app);
-
-// WebSocket server for HTTPS
-const wss = new WebSocket.Server({ server: httpsServer });
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 let dbClient;
 let docClient;
@@ -49,6 +37,17 @@ async function initializeDbClients() {
     }
 }
 
+
+
+// const dbClient = new DynamoDBClient({
+//     region: 'us-east-1', // Your DynamoDB region
+//     credentials: {
+//         accessKeyId: 'XXXXXXXXXX',    //replace
+//         secretAccessKey: 'XXXXXXXXX'    //replace
+//     }
+// });
+
+
 // Configure AWS Cognito parameters
 const cognito = new AWS.CognitoIdentityServiceProvider({
     region: 'us-east-1' // Set to the region of your Cognito User Pool
@@ -56,6 +55,7 @@ const cognito = new AWS.CognitoIdentityServiceProvider({
 
 //const app = express();
 app.use(bodyParser.json());
+
 
 // Configure session middleware
 app.use(session({
@@ -106,6 +106,7 @@ app.post('/register', (req, res) => {
     });
 });
 
+
 // Confirm user registration (users need to enter a verification code received by email)
 app.post('/confirm', (req, res) => {
     const { email, code } = req.body;
@@ -146,20 +147,31 @@ app.post('/login', (req, res) => {
             console.error('Error logging in:', err);
             return res.status(400).send(err.message || JSON.stringify(err));
         }
+        //console.log("data",data)
         req.session.user = {
             email: email,
             token: data.AuthenticationResult.AccessToken // You can save more information based on your needs
         };
 
         // Redirect to ship.html after successful login
+        //res.redirect('/ship');
         res.json({ redirectUrl: '/ship' });
 
     });
 });
 
+
 // Routing handler: redirect to ship.html
 app.get('/ship', (req, res) => {
+    //console.error('User:&&&&', req);
+    // if (!req.session.user) {
+    //     //console.error('%%%%%%');
+
+    //     return res.status(401).send('Unauthorized: You need to login first.');
+    // }
+    // 返回 ship.html 文件
     res.sendFile(path.join(__dirname, 'public', 'ship.html'), (err) => {
+        //console.error('Error sending file:*******', err);
         if (err) {
             console.error('Error sending file:', err);
             return res.status(500).send('Internal Server Error');
@@ -169,8 +181,10 @@ app.get('/ship', (req, res) => {
 // Route to check session
 app.get('/check-session', (req, res) => {
     if (req.session.user) {
+        // If session exists, return 200 status code
         res.status(200).send('Session exists');
     } else {
+        // If no session, return 401 Unauthorized
         res.status(401).send('No session');
     }
 });
@@ -223,8 +237,9 @@ db.connect(err => {
 
 // Search for ships by MMSI
 app.get('/search', (req, res) => {
+    // Verify if the user is logged in
     if (!req.session.user || !req.session.user.email) {
-        return res.status(403).json({ error: 'Unauthorized access' });
+        return res.status(403).json({ error: 'Unauthorized access' }); // Return 403 error if not logged in
     }
 
     const mmsi = req.query.mmsi;
@@ -233,17 +248,22 @@ app.get('/search', (req, res) => {
         return res.status(400).send({ error: 'MMSI is required' });
     }
 
+    // Get current logged-in user's information using req.session.user, such as userId
     const userEmail = req.session.user.email;
+    //console.log("userId",userEmail)
+
+    // Build a DynamoDB data item
     const item = {
-        TableName: "UserSearches",
+        TableName: "UserSearches", // Your DynamoDB table name
         Item: {
             "Email": { S: userEmail },
             "MMSI": { S: mmsi },
-            "SearchTime": { S: new Date().toISOString() }
+            "SearchTime": { S: new Date().toISOString() } // Store search time
         }
     };
 
     try {
+        // Store user search in DynamoDB
         dbClient.send(new PutItemCommand(item));
         console.log("Search stored successfully in DynamoDB.");
     } catch (error) {
@@ -251,14 +271,16 @@ app.get('/search', (req, res) => {
         return res.status(500).send({ error: 'Failed to store search data' });
     }
 
+    // Update the query to add user restrictions, ensuring users can only search for ship information relevant to them
     const query = `
-        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus,
+        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
                PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
         FROM ship
         WHERE MMSI = ?
         LIMIT 1
     `;
 
+    // Pass MMSI and UserId as query parameters
     db.query(query, [mmsi], (err, results) => {
         if (err) {
             console.error('Error searching ship from database:', err.stack);
@@ -273,10 +295,13 @@ app.get('/search', (req, res) => {
     });
 });
 
+
 // Search for ships by ShipName
 app.get('/searchByName', (req, res) => {
+
+    // Verify if the user is logged in
     if (!req.session.user || !req.session.user.email) {
-        return res.status(403).json({ error: 'Unauthorized access' });
+        return res.status(403).json({ error: 'Unauthorized access' }); // Return 403 error if not logged in
     }
 
     const shipName = req.query.shipName;
@@ -286,25 +311,28 @@ app.get('/searchByName', (req, res) => {
     }
 
     const userEmail = req.session.user.email;
+    //console.log("userId",userEmail)
+
+    // Build a DynamoDB data item
     const item = {
-        TableName: "UserSearches",
+        TableName: "UserSearches", // Your DynamoDB table name
         Item: {
             "Email": { S: userEmail },
             "shipName": { S: shipName },
-            "SearchTime": { S: new Date().toISOString() }
+            "SearchTime": { S: new Date().toISOString() } // Store search time
         }
     };
 
     try {
+        // Store user search in DynamoDB
         dbClient.send(new PutItemCommand(item));
         console.log("Search stored successfully in DynamoDB.");
     } catch (error) {
         console.error("Error storing search in DynamoDB:", error);
         return res.status(500).send({ error: 'Failed to store search data' });
     }
-
     const query = `
-        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus,
+        SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
                PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
         FROM ship
         WHERE ShipName LIKE ?
@@ -325,10 +353,12 @@ app.get('/searchByName', (req, res) => {
     });
 });
 
+//docClient = DynamoDBDocumentClient.from(dbClient);
 app.get('/searchHistory', async (req, res) => {
     if (!req.session.user || !req.session.user.email) {
         return res.status(403).json({ error: 'Unauthorized access' });
     }
+    // Check if the database client is initialized
     if (!docClient) {
         return res.status(503).json({ error: 'Database client not initialized' });
     }
@@ -342,6 +372,7 @@ app.get('/searchHistory', async (req, res) => {
     };
 
     try {
+        // Create and send ScanCommand
         const command = new ScanCommand(params);
         const { Items } = await docClient.send(command);
         res.json(Items || []);
@@ -350,6 +381,9 @@ app.get('/searchHistory', async (req, res) => {
         res.status(500).send({ error: 'Failed to retrieve data' });
     }
 });
+
+
+
 
 // Create a buffer array to store pending ship data
 const shipDataBuffer = [];
@@ -373,12 +407,14 @@ aisSocket.on('message', function incoming(data) {
     const aisMessage = JSON.parse(data);
     const mmsi = aisMessage.MetaData.MMSI;
 
+    // Update or add ship data
     allShips.set(mmsi, aisMessage);
 
     const { PositionReport } = aisMessage.Message;
     const { MetaData } = aisMessage;
     const timeUtc = new Date(MetaData.time_utc).toISOString().slice(0, 19).replace('T', ' ');
 
+    // Push the data into the buffer array
     shipDataBuffer.push([
         mmsi,
         MetaData.latitude,
@@ -396,12 +432,12 @@ aisSocket.on('message', function incoming(data) {
         timeUtc
     ]);
 
+    // If the buffer array reaches batch size, perform an immediate database insert
     if (shipDataBuffer.length >= 1000) {
         console.log("Buffer full, performing batch insert.");
 
         const insertQuery = `
-            INSERT INTO ship (MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus,
-                              PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc)
+            INSERT INTO ship (MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc)
             VALUES ?
             ON DUPLICATE KEY UPDATE
             Latitude = VALUES(Latitude),
@@ -427,9 +463,20 @@ aisSocket.on('message', function incoming(data) {
             }
         });
 
+        // Clear the buffer array
         shipDataBuffer.length = 0;
     }
 });
+
+// Filter ship data, returning only ships within the specified bounds
+function filterShipsByBounds(ships, bounds) {
+    return ships.filter(ship => {
+        const latitude = ship.MetaData.latitude;
+        const longitude = ship.MetaData.longitude;
+        return longitude >= bounds.west && longitude <= bounds.east &&
+            latitude >= bounds.south && latitude <= bounds.north;
+    });
+}
 
 // Handle WebSocket errors
 aisSocket.on('error', function error(err) {
@@ -447,8 +494,9 @@ wss.on('connection', function connection(ws) {
         const bounds = JSON.parse(message);
         ws.bounds = bounds;
 
+        // Construct a query statement, limiting the result to 50 records
         const query = `
-            SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus,
+            SELECT MMSI, Latitude, Longitude, Cog, CommunicationState, NavigationalStatus, 
                    PositionAccuracy, Raim, RateOfTurn, Sog, Timestamp, TrueHeading, ShipName, time_utc
             FROM ship
             WHERE Longitude BETWEEN ? AND ? AND Latitude BETWEEN ? AND ?
@@ -456,6 +504,7 @@ wss.on('connection', function connection(ws) {
             LIMIT 50
         `;
 
+        // Execute the query
         db.query(query, [bounds.west, bounds.east, bounds.south, bounds.north], (err, results) => {
             if (err) {
                 console.error('Error querying ships from database:', err.stack);
@@ -463,6 +512,7 @@ wss.on('connection', function connection(ws) {
                 return;
             }
 
+            // Send the query results to the front end
             ws.send(JSON.stringify(results));
         });
     });
@@ -472,19 +522,18 @@ wss.on('connection', function connection(ws) {
     });
 });
 
-// Start both HTTP and HTTPS servers
-const HTTP_PORT = process.env.HTTP_PORT || 80;
-const HTTPS_PORT = process.env.HTTPS_PORT || 443;
+// Stop sending data to the client when the map is dragged
+function stopSendingData(ws) {
+    ws.sendingData = false;
+}
 
+// Start the server
+const PORT = process.env.PORT || 3000;
 async function startServer() {
     await initializeDbClients();
 
-    httpServer.listen(HTTP_PORT, () => {
-        console.log(`HTTP server listening on port ${HTTP_PORT}`);
-    });
-
-    httpsServer.listen(HTTPS_PORT, () => {
-        console.log(`HTTPS server listening on port ${HTTPS_PORT}`);
+    server.listen(PORT, () => {
+        console.log(`Server is listening on port ${PORT}`);
     });
 }
 
@@ -492,3 +541,7 @@ startServer().catch(error => {
     console.error("Failed to start server:", error);
     process.exit(1);
 });
+// const PORT = process.env.PORT || 3000;
+// server.listen(PORT, () => {
+//     console.log(`Server is listening on port ${PORT}`);
+// });
