@@ -135,9 +135,10 @@
       <input type="email" id="register-email" placeholder="Email" required />
       <input type="password" id="register-password" placeholder="Password" required />
       <input type="password" id="register-confirm-password" placeholder="Confirm Password" required />
-      <div id="password-error" class="error hidden">Passwords do not match</div>
+      <div id="register-error" class="error hidden"></div>
       <button type="submit">Register</button>
     </form>
+    <!-- <p id="register-error" class="error-message"></p> -->
     <p>Already have an account? <a href="#" id="show-login">Login</a></p>
   </div>
 
@@ -154,7 +155,7 @@
     const loginView = document.getElementById('login-view');
     const registerView = document.getElementById('register-view');
     const confirmView = document.getElementById('confirm-view');
-    const passwordError = document.getElementById('password-error');
+    const registerError = document.getElementById('register-error');
 
 
     document.getElementById('show-register').addEventListener('click', (e) => {
@@ -171,18 +172,46 @@
 
     document.getElementById('register-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const givenName = document.getElementById('register-given-name').value;
-      const familyName = document.getElementById('register-family-name').value;
-      const email = document.getElementById('register-email').value;
+      const givenName = document.getElementById('register-given-name').value.trim();
+      const familyName = document.getElementById('register-family-name').value.trim();
+      const email = document.getElementById('register-email').value.trim();
       const password = document.getElementById('register-password').value;
       const confirmPassword = document.getElementById('register-confirm-password').value;
 
-      if (password !== confirmPassword) {
-        passwordError.classList.remove('hidden');
+      //const passwordError = document.getElementById('password-error');
+      const registerError = document.getElementById('register-error');
+
+      const formError = document.getElementById('form-error');
+
+      // Helper function to check if password meets requirements
+      function validatePassword(password) {
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+        return passwordRegex.test(password);
+      }
+
+      // Check if any field is empty
+      if (!givenName || !familyName || !email || !password) {
+        registerError.textContent = "All fields are required.";
+        registerError.classList.remove('hidden');
         return;
       }
-      passwordError.classList.add('hidden');
 
+      // Check if password and confirmPassword match
+      if (password !== confirmPassword) {
+        registerError.textContent = "Passwords do not match.";
+        registerError.classList.remove('hidden');
+        return;
+      }
+
+      // Check if password meets strength criteria
+      if (!validatePassword(password)) {
+        registerError.innerHTML = "Password must be at least 8 characters long, <br>include uppercase, lowercase, numbers,<br> and special characters.";
+        registerError.classList.remove('hidden');
+        return;
+      }
+      registerError.classList.add('hidden');
+
+      // Proceed with form submission if all validations pass
       const response = await fetch('/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,6 +226,35 @@
       confirmView.classList.remove('hidden');
       document.getElementById('confirm-email').value = email;
     });
+
+    // document.getElementById('register-form').addEventListener('submit', async (e) => {
+    //   e.preventDefault();
+    //   const givenName = document.getElementById('register-given-name').value;
+    //   const familyName = document.getElementById('register-family-name').value;
+    //   const email = document.getElementById('register-email').value;
+    //   const password = document.getElementById('register-password').value;
+    //   const confirmPassword = document.getElementById('register-confirm-password').value;
+
+    //   if (password !== confirmPassword) {
+    //     passwordError.classList.remove('hidden');
+    //     return;
+    //   }
+    //   passwordError.classList.add('hidden');
+
+    //   const response = await fetch('/register', {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ givenName, familyName, email, password })
+    //   });
+
+    //   const data = await response.json();
+    //   console.log('Register:', data);
+
+    //   // Show confirmation view after successful registration
+    //   registerView.classList.add('hidden');
+    //   confirmView.classList.remove('hidden');
+    //   document.getElementById('confirm-email').value = email;
+    // });
 
     document.getElementById('confirm-form').addEventListener('submit', async (e) => {
       e.preventDefault();
