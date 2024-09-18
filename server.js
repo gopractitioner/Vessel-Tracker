@@ -193,7 +193,7 @@ const allShips = new Map();
 
 // Configure MySQL connection
 const db = mysql.createConnection({
-  host: "18.206.210.41",
+  host: "localhost",
   user: "root",
   password: "527group10",
   database: "map",
