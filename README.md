@@ -11,4 +11,8 @@ change the mysql password to your own local mysql password
 ```
 
 # Architechure diagram:
-![Architechure diagram](ArchitectureDiagram.jpg)
+![Architechure diagram](./public/images/ArchitectureDiagram.jpg)
+
+# Screenshots
+![Search by Ship ID](./public/images/searchbyid.jpg)
+![Search by name](./public/images/searchbyname.jpg)
